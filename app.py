@@ -1,36 +1,33 @@
 import streamlit as st
 import easyocr
 import numpy as np
-import cv2
 from PIL import Image
-from textblob import TextBlob
+import cv2
 
-st.set_page_config(page_title="Handwriting to Typed Text", layout="centered")
+st.title("📝 Handwritten Notes Reader (Image to Text)")
 
-st.title("📄 Handwriting to Typed Text")
+uploaded_file = st.file_uploader("Upload an image of handwritten notes", type=["png", "jpg", "jpeg"])
 
-uploaded_file = st.file_uploader("Upload a handwritten image", type=["jpg", "jpeg", "png"])
+@st.cache_resource
+def load_ocr_model():
+    return easyocr.Reader(['en'])  # Add other langs if needed
 
-if uploaded_file:
-    image = Image.open(uploaded_file).convert("RGB")
-    img_np = np.array(image)
+def preprocess_image(image: Image.Image):
+    img = np.array(image.convert("L"))  # Convert to grayscale
+    img = cv2.resize(img, (1024, 1024), interpolation=cv2.INTER_LINEAR)
+    img = cv2.bilateralFilter(img, 11, 17, 17)
+    return img
 
-    st.image(image, caption="🖼️ Uploaded Image", use_column_width=True)
+if uploaded_file is not None:
+    st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+    image = Image.open(uploaded_file)
+    st.write("Processing...")
 
-    with st.spinner("🔍 Extracting text... Please wait."):
-        reader = easyocr.Reader(['en'])
-        results = reader.readtext(img_np, paragraph=True)
+    processed_img = preprocess_image(image)
+    reader = load_ocr_model()
+    results = reader.readtext(processed_img)
 
-        corrected_paragraphs = []
-
-        for (bbox, text, prob) in results:
-            blob = TextBlob(text)
-            corrected = str(blob.correct())
-            corrected_paragraphs.append(corrected)
-
-        final_output = "\n\n".join(corrected_paragraphs)
-
-    st.subheader("📝 Final Output:")
-    st.text_area("Formatted Corrected Text", final_output, height=400)
-
-    st.download_button("📥 Download Typed Version", final_output, file_name="handwriting_output.txt")
+    output_text = " ".join([res[1] for res in results])
+    
+    st.subheader("📄 Extracted Text:")
+    st.text_area("Output", output_text, height=300)
